@@ -31,6 +31,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 @Getter
@@ -80,7 +81,7 @@ public class PayloadProfileCache<X extends PayloadProfile> extends PayloadCache<
             errorService.capture("Failed to start MongoDB store for cache " + name);
         }
         if (mode.equals(PayloadMode.NETWORK_NODE)) {
-            handshakeService.subscribe(new ProfileHandshake(this));
+            handshakeService.subscribe(new ProfileHandshake(injector, this));
         }
         database.getMorphia().map(NetworkProfile.class);
         return success;
@@ -89,8 +90,16 @@ public class PayloadProfileCache<X extends PayloadProfile> extends PayloadCache<
     @Override
     protected boolean terminate() {
         boolean success = true;
+        AtomicInteger failedSaves = new AtomicInteger(0);
         for (Player player : plugin.getServer().getOnlinePlayers()) {
-            player.kickPlayer(lang.module(this).format("shutdown"));
+            getFromCache(player).ifPresent(payload -> {
+                if (!save(payload)) {
+                    failedSaves.getAndIncrement();
+                }
+            });
+        }
+        if (failedSaves.get() > 0) {
+            errorService.capture(failedSaves + " objects failed to save during shutdown");
         }
         controllers.clear();
         if (!localStore.shutdown()) {
@@ -99,6 +108,8 @@ public class PayloadProfileCache<X extends PayloadProfile> extends PayloadCache<
         if (!mongoStore.shutdown()) {
             success = false;
         }
+
+
         return success;
     }
 
@@ -332,28 +343,27 @@ public class PayloadProfileCache<X extends PayloadProfile> extends PayloadCache<
     @Override
     public boolean save(@Nonnull X payload) {
         Preconditions.checkNotNull(payload);
-        if (mode.equals(PayloadMode.NETWORK_NODE)) {
-            Optional<NetworkProfile> onp = networkService.get(payload);
-            if (onp.isPresent()) {
-                NetworkProfile np = onp.get();
-                if (this.saveNoSync(payload)) {
-                    np.markSaved();
-                    if (networkService.save(np)) {
-                        if (settings.isEnableSync()) {
-                            sync.update(payload.getIdentifier());
-                        }
-                        return true;
-                    } else {
-                        return false;
+        Optional<NetworkProfile> onp = networkService.get(payload);
+        if (onp.isPresent()) {
+            NetworkProfile np = onp.get();
+            if (this.saveNoSync(payload)) {
+                np.markSaved();
+                if (networkService.save(np)) {
+                    if (settings.isEnableSync()) {
+                        sync.update(payload.getIdentifier());
                     }
+                    return true;
                 } else {
+                    errorService.capture("Failed to save profile " + payload.getName() + ": Couldn't save network profile (but saved normal profile)");
                     return false;
                 }
             } else {
+                errorService.capture("Failed to save profile " + payload.getName() + ": Failed to save to database (via saveNoSync())");
                 return false;
             }
         } else {
-            return saveNoSync(payload);
+            errorService.capture("Failed to save profile " + payload.getName() + ": Network Profile doesn't exist");
+            return false;
         }
     }
 

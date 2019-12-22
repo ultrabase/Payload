@@ -64,7 +64,7 @@ public class ProfileListener implements Listener {
                 PayloadProfileCache cache = (PayloadProfileCache) c;
                 PayloadProfileController controller = cache.getController(player.getUniqueId());
                 if (controller != null) {
-                    cache.getErrorService().debug("Initializing player " + player.getName());
+                    cache.getErrorService().debug("Initializing player " + player.getName() + " for cache " + cache.getName());
                     controller.initializeOnJoin(player);
                 }
                 else {
@@ -91,6 +91,13 @@ public class ProfileListener implements Listener {
                                 PayloadProfileLogoutEvent payloadEvent = new PayloadProfileLogoutEvent(profile);
                                 cache.getPlugin().getServer().getPluginManager().callEvent(payloadEvent);
 
+                                Optional<NetworkProfile> oNP = cache.getNetworked(profile);
+                                oNP.ifPresent(networkProfile -> {
+                                    networkProfile.setOnline(false);
+                                    networkProfile.setLastSeen(new Date());
+                                    cache.runAsync(() -> cache.getNetworkService().save(networkProfile));
+                                });
+
                                 profile.uninitializePlayer();
                                 if (!cache.save(profile)) {
                                     cache.getErrorService().capture("Error saving profile on quit: " + player.getName());
@@ -112,24 +119,15 @@ public class ProfileListener implements Listener {
 
                                     // Not switching servers (no incoming handshake) -- we can assume they are actually
                                     // Logging out, and not switching servers
-                                    networkProfile.setOnline(false);
-                                    networkProfile.setLastSeen(new Date());
-
-                                    cache.getNetworkService().save(networkProfile);
-                                    cache.save(profile); // Don't publish a sync since we're switching servers
-                                    // In network node mode, join is handled before quit when switching servers
-                                    // so we don't want to save on quit
-                                    // but we do want to remove their locally cached profile because the data will be outdated
-                                    // and we want to prevent accidental data rollbacks
-                                    cache.getLocalStore().remove(player.getUniqueId());
+                                    cache.save(profile);
+                                    cache.controller(event.getPlayer().getUniqueId()).uncache(profile, false);
                                     cache.removeController(player.getUniqueId());
                                     cache.getErrorService().debug("Saving player " + player.getName() + " on logout (not switching servers)");
                                 } else {
                                     PayloadProfileSwitchServersEvent payloadEvent = new PayloadProfileSwitchServersEvent(profile);
                                     cache.getPlugin().getServer().getPluginManager().callEvent(payloadEvent);
 
-                                    // Switching servers, don't save their data -- just remove
-                                    cache.getLocalStore().remove(player.getUniqueId()); // remove on quit to prevent accidental data rollbacks
+                                    cache.controller(event.getPlayer().getUniqueId()).uncache(profile, true);
                                     cache.getErrorService().debug("Not saving player " + player.getName() + " on quit (is switching servers)");
                                 }
                             } else {
