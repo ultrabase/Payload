@@ -41,7 +41,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.5</version>
+                <version>3.8.1</version>
                 <configuration>
                     <source>1.8</source>
                     <target>1.8</target>
@@ -50,7 +50,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
-                <version>2.4.3</version>
+                <version>3.2.1</version>
                 <executions>
                     <execution>
                         <phase>package</phase>
@@ -59,6 +59,15 @@
                         </goals>
                     </execution>
                 </executions>
+                <configuration>
+                    <minimizeJar>true</minimizeJar>
+                    <relocations>
+                        <relocation>
+                            <pattern>com.google.common</pattern>
+                            <shadedPattern>shaded.com.google.common</shadedPattern>
+                        </relocation>
+                    </relocations>
+                </configuration>
             </plugin>
         </plugins>
     </build>
@@ -129,10 +138,13 @@
 
     <distributionManagement>
         <repository>
-            <id>github</id>
-            <name>GitHub jonahseguin Apache Maven Packages</name>
-            <url>https://maven.pkg.github.com/jonahseguin/Payload</url>
+            <id>MCTales-Private-Releases</id>
+            <url>http://142.44.142.225:8081/repository/MCTales-Private-Releases/</url>
         </repository>
+        <snapshotRepository>
+            <id>MCTales-Private-Snapshots</id>
+            <url>http://142.44.142.225:8081/repository/MCTales-Private-Snapshots/</url>
+        </snapshotRepository>
     </distributionManagement>
 
 </project>
